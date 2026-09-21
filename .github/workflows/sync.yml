@@ -26,8 +26,15 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git remote add upstream https://github.com/develop202/kgcheckin.git 2>/dev/null || true
-          git fetch upstream main
+          # 上游仓库不存在、被删除或暂时无法访问时，直接跳过，绝不修改本仓库
+          if ! git remote get-url upstream >/dev/null 2>&1; then
+            git remote add upstream https://github.com/develop202/kgcheckin.git
+          fi
+
+          if ! git fetch upstream main; then
+            echo "::warning::无法访问上游 develop202/kgcheckin，跳过同步，不修改本仓库。"
+            exit 0
+          fi
 
           LOCAL=$(git rev-parse HEAD)
           UPSTREAM=$(git rev-parse upstream/main)
@@ -35,22 +42,30 @@ jobs:
           echo "当前版本: $LOCAL"
           echo "上游版本: $UPSTREAM"
 
-          if [ "$LOCAL" = "$UPSTREAM" ]; then
-            echo "上游没有更新，跳过同步。"
+          # 只判断“上游是否有新的提交”，避免本仓库自己的额外提交导致误同步
+          AHEAD=$(git rev-list --count HEAD..upstream/main)
+
+          if [ "$AHEAD" -eq 0 ]; then
+            echo "上游没有新提交，跳过同步。"
             exit 0
           fi
 
-          echo "检测到上游更新，开始同步..."
+          echo "检测到上游有 $AHEAD 个新提交，开始同步..."
 
-          # 保护本仓库自己的 README 和本同步 Action
+          # 永久保护本仓库自己的 README 和本同步 Action
           mkdir -p /tmp/protected
           git show HEAD:README.md > /tmp/protected/README.md
           git show HEAD:.github/workflows/sync.yml > /tmp/protected/sync.yml
 
-          # 上游有冲突时优先采用上游内容
-          git merge upstream/main --no-edit -X theirs
+          # 上游有内容冲突时优先采用上游内容
+          # 如果合并失败，立即退出且不会 push，避免破坏本仓库
+          if ! git merge upstream/main --no-edit -X theirs; then
+            echo "::warning::上游同步发生无法自动解决的冲突，已停止同步，不会修改远端仓库。"
+            git merge --abort || true
+            exit 0
+          fi
 
-          # 恢复受保护文件，确保不会被上游覆盖
+          # 恢复受保护文件，确保上游无法覆盖或删除
           cp /tmp/protected/README.md README.md
           cp /tmp/protected/sync.yml .github/workflows/sync.yml
 
