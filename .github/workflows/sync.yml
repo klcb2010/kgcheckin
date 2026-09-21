@@ -1,1 +1,67 @@
-试试  是 
+name: 同步上游
+
+on:
+  schedule:
+    # 每天北京时间 03:00（UTC 19:00）
+    - cron: '0 19 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 检测并同步上游
+        shell: bash
+        run: |
+          set -e
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git remote add upstream https://github.com/develop202/kgcheckin.git 2>/dev/null || true
+          git fetch upstream main
+
+          LOCAL=$(git rev-parse HEAD)
+          UPSTREAM=$(git rev-parse upstream/main)
+
+          echo "当前版本: $LOCAL"
+          echo "上游版本: $UPSTREAM"
+
+          if [ "$LOCAL" = "$UPSTREAM" ]; then
+            echo "上游没有更新，跳过同步。"
+            exit 0
+          fi
+
+          echo "检测到上游更新，开始同步..."
+
+          # 保护本仓库自己的 README 和本同步 Action
+          mkdir -p /tmp/protected
+          git show HEAD:README.md > /tmp/protected/README.md
+          git show HEAD:.github/workflows/sync.yml > /tmp/protected/sync.yml
+
+          # 上游有冲突时优先采用上游内容
+          git merge upstream/main --no-edit -X theirs
+
+          # 恢复受保护文件，确保不会被上游覆盖
+          cp /tmp/protected/README.md README.md
+          cp /tmp/protected/sync.yml .github/workflows/sync.yml
+
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "同步后没有需要提交的变更，跳过提交。"
+            exit 0
+          fi
+
+          git commit -m "chore: sync upstream develop202/kgcheckin"
+          git push origin main
+
+          echo "上游同步完成。"
