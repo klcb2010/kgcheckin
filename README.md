@@ -30,7 +30,7 @@ GitHub Actions 实现 `酷狗概念VIP` 自动签到，每天领取总计 `两�
      复制下方官网链接，在浏览器中打开
 
      ```shell
-     https://github.com/settings/personal-access-tokens/new
+     https://github.com/settings/tokens
      ```
 
    - **登录 GitHub 官网**  
