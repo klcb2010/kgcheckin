@@ -2,7 +2,12 @@ name: Action Failure Notify
 
 on:
   workflow_run:
-    workflows: ["*"]
+    workflows:
+      - "同步上游"
+      - "二维码登录"
+      - "仓库保活"
+      - "手机号登录"
+      - "签到"
     types: [completed]
 
 permissions:
